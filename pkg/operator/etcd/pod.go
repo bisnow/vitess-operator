@@ -277,18 +277,58 @@ func UpdatePod(obj *corev1.Pod, spec *Spec) {
 				obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
 			}
 
-			// Add zone requirement to existing node affinity
+			// Add zone requirement to existing node affinity by merging into existing terms
 			zoneRequirement := corev1.NodeSelectorRequirement{
 				Key:      k8s.ZoneFailureDomainLabel,
 				Operator: corev1.NodeSelectorOpIn,
 				Values:   []string{spec.Zone},
 			}
-			obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
-				obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
-				corev1.NodeSelectorTerm{
-					MatchExpressions: []corev1.NodeSelectorRequirement{zoneRequirement},
-				},
-			)
+
+			// Check if we already have a zone requirement in any existing terms
+			zoneExists := false
+			for i := range obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
+				for j := range obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[i].MatchExpressions {
+					if obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[i].MatchExpressions[j].Key == k8s.ZoneFailureDomainLabel {
+						// Zone already exists, update the values to include this zone
+						zoneExists = true
+						existingValues := obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[i].MatchExpressions[j].Values
+						// Check if this zone is already in the values
+						found := false
+						for _, val := range existingValues {
+							if val == spec.Zone {
+								found = true
+								break
+							}
+						}
+						if !found {
+							obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[i].MatchExpressions[j].Values = append(existingValues, spec.Zone)
+						}
+						break
+					}
+				}
+				if zoneExists {
+					break
+				}
+			}
+
+			// If zone requirement doesn't exist, add it to the first existing term or create a new one
+			if !zoneExists {
+				if len(obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms) > 0 {
+					// Add to the first existing term
+					obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions = append(
+						obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions,
+						zoneRequirement,
+					)
+				} else {
+					// Create a new term with just the zone requirement
+					obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
+						obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
+						corev1.NodeSelectorTerm{
+							MatchExpressions: []corev1.NodeSelectorRequirement{zoneRequirement},
+						},
+					)
+				}
+			}
 		} else {
 			// If we're not limited to one zone, try to spread across zones.
 			if obj.Spec.Affinity == nil {

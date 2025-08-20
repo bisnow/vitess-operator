@@ -213,6 +213,9 @@ func updateVitessKeyspaceInPlace(key client.ObjectKey, vtk *planetscalev2.Vitess
 	// Switching update strategies should always take effect immediately.
 	vtk.Spec.UpdateStrategy = newKeyspace.Spec.UpdateStrategy
 
+	// Update ZoneMap immediately when zones change, as this affects scheduling
+	vtk.Spec.ZoneMap = newKeyspace.Spec.ZoneMap
+
 	// Update disk size immediately if specified to.
 	if *vtk.Spec.UpdateStrategy.Type == planetscalev2.ExternalVitessClusterUpdateStrategyType {
 		if vtk.Spec.UpdateStrategy.External.ResourceChangesAllowed(corev1.ResourceStorage) {

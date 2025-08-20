@@ -52,10 +52,9 @@ type EtcdLockserverSpec struct {
 	// The rest of the fields below are filled in by the parent controller.
 	EtcdLockserverTemplate `json:",inline"`
 
-	// Zone is the name of the Availability Zone that this lockserver should run in.
-	// This value should match the value of the "topology.kubernetes.io/zone"
-	// label on the Kubernetes Nodes in that AZ.
-	// If the Kubernetes Nodes don't have such a label, leave this empty.
+	// Zone is the availability zone where this etcd cluster should be deployed.
+	// This value should match the value of the "failure-domain.beta.kubernetes.io/zone"
+	// label on Kubernetes Nodes.
 	Zone string `json:"zone,omitempty"`
 }
 

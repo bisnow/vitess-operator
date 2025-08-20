@@ -92,10 +92,9 @@ type VitessCellTemplate struct {
 	// +kubebuilder:validation:Pattern=^[A-Za-z0-9]([_.A-Za-z0-9]*[A-Za-z0-9])?$
 	Name string `json:"name"`
 
-	// Zone is the name of the Availability Zone that this Vitess Cell should run in.
-	// This value should match the value of the "topology.kubernetes.io/zone"
-	// label on the Kubernetes Nodes in that AZ.
-	// If the Kubernetes Nodes don't have such a label, leave this empty.
+	// Zone is the availability zone where this cell should be deployed.
+	// This value should match the value of the "failure-domain.beta.kubernetes.io/zone"
+	// label on Kubernetes Nodes.
 	Zone string `json:"zone,omitempty"`
 
 	// Affinity allows you to set rules that constrain the scheduling of
