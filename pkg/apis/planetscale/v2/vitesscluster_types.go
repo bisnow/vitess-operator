@@ -49,6 +49,11 @@ type VitessCluster struct {
 
 // VitessClusterSpec defines the desired state of VitessCluster.
 type VitessClusterSpec struct {
+	// Affinity is the top-level affinity setting that applies to all pods
+	// managed by this VitessCluster. This merges with cell-level affinity
+	// settings, with cell-level settings taking precedence for overlapping fields.
+	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+
 	// Images specifies the container images (including version tag) to use
 	// in the cluster.
 	// Default: Let the operator choose.

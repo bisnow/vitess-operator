@@ -277,6 +277,7 @@ func newVitessShard(key client.ObjectKey, vtk *planetscalev2.VitessKeyspace, par
 			DatabaseName:           vtk.Spec.DatabaseName,
 			KeyRange:               shard.KeyRange,
 			ZoneMap:                vtk.Spec.ZoneMap,
+			AffinityMap:            vtk.Spec.AffinityMap,
 			BackupLocations:        vtk.Spec.BackupLocations,
 			BackupEngine:           vtk.Spec.BackupEngine,
 			ExtraVitessFlags:       vtk.Spec.ExtraVitessFlags,

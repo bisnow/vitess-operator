@@ -63,6 +63,10 @@ type VitessShardSpec struct {
 	// for all cells defined in the VitessCluster.
 	ZoneMap map[string]string `json:"zoneMap"`
 
+	// AffinityMap is a map from Vitess cell name to affinity settings
+	// for all cells defined in the VitessCluster.
+	AffinityMap map[string]*corev1.Affinity `json:"affinityMap,omitempty"`
+
 	// Images are not customizable by users at the shard level because version
 	// skew across the shard is discouraged except during rolling updates,
 	// in which case this field is automatically managed by the VitessKeyspace

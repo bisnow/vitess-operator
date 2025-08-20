@@ -307,6 +307,16 @@ func vttabletSpecs(vts *planetscalev2.VitessShard, parentLabels map[string]strin
 			update.StringMap(&extraFlags, vts.Spec.ExtraVitessFlags)
 			update.StringMap(&extraFlags, pool.Vttablet.ExtraFlags)
 
+			// Determine affinity: cell-level affinity takes precedence over pool-level affinity
+			var affinity *corev1.Affinity
+			if cellAffinity, exists := vts.Spec.AffinityMap[pool.Cell]; exists && cellAffinity != nil {
+				// Use cell-level affinity if specified
+				affinity = cellAffinity
+			} else if pool.Affinity != nil {
+				// Fall back to pool-level affinity if no cell-level affinity
+				affinity = pool.Affinity
+			}
+
 			// Make shallow copy of pool.Vttablet to avoid mutating input.
 			vttabletcpy := pool.Vttablet
 			vttabletcpy.ExtraFlags = extraFlags
@@ -341,7 +351,7 @@ func vttabletSpecs(vts *planetscalev2.VitessShard, parentLabels map[string]strin
 				Annotations:               annotations,
 				BackupLocation:            backupLocation,
 				BackupEngine:              vts.Spec.BackupEngine,
-				Affinity:                  pool.Affinity,
+				Affinity:                  affinity,
 				ExtraEnv:                  pool.ExtraEnv,
 				ExtraVolumes:              pool.ExtraVolumes,
 				ExtraLabels:               pool.ExtraLabels,

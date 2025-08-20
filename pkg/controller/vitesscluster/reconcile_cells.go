@@ -119,6 +119,14 @@ func newVitessCell(key client.ObjectKey, vt *planetscalev2.VitessCluster, parent
 		allCells = append(allCells, vt.Spec.Cells[i].Name)
 	}
 
+	// Get the merged affinity for this specific cell and override the template
+	if affinityMap := vt.Spec.AffinityMap(); affinityMap != nil {
+		if cellAffinity, exists := affinityMap[cell.Name]; exists {
+			// Override the template affinity with the merged affinity from the cluster
+			template.Affinity = cellAffinity
+		}
+	}
+
 	// Copy parent labels map and add cell-specific label.
 	labels := make(map[string]string, len(parentLabels)+1)
 	for k, v := range parentLabels {

@@ -41,6 +41,140 @@ func (s *VitessClusterSpec) ZoneMap() map[string]string {
 	return zones
 }
 
+// AffinityMap returns a map from cell names to their affinity settings.
+// Top-level cluster affinity is merged with cell-specific affinity settings.
+func (s *VitessClusterSpec) AffinityMap() map[string]*corev1.Affinity {
+	affinities := make(map[string]*corev1.Affinity, len(s.Cells))
+	for i := range s.Cells {
+		cell := &s.Cells[i]
+
+		// Start with top-level cluster affinity (if any)
+		var mergedAffinity *corev1.Affinity
+		if s.Affinity != nil {
+			// Deep copy the top-level affinity to avoid modifying the original
+			mergedAffinity = s.Affinity.DeepCopy()
+		}
+
+		// Merge with cell-specific affinity if it exists
+		if cell.Affinity != nil {
+			if mergedAffinity == nil {
+				// No top-level affinity, just use cell affinity
+				mergedAffinity = cell.Affinity.DeepCopy()
+			} else {
+				// Merge top-level and cell affinity
+				mergedAffinity = mergeAffinities(mergedAffinity, cell.Affinity)
+			}
+		}
+
+		if mergedAffinity != nil {
+			affinities[cell.Name] = mergedAffinity
+		}
+	}
+	return affinities
+}
+
+// mergeAffinities merges two affinity objects, with the second one taking precedence
+// for fields that are set in both.
+func mergeAffinities(base, override *corev1.Affinity) *corev1.Affinity {
+	if base == nil {
+		return override.DeepCopy()
+	}
+	if override == nil {
+		return base.DeepCopy()
+	}
+
+	merged := base.DeepCopy()
+
+	// Merge NodeAffinity
+	if override.NodeAffinity != nil {
+		if merged.NodeAffinity == nil {
+			merged.NodeAffinity = &corev1.NodeAffinity{}
+		}
+
+		// Merge RequiredDuringSchedulingIgnoredDuringExecution
+		if override.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
+			if merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+				merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
+			}
+			merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
+				merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
+				override.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms...,
+			)
+		}
+
+		// Merge PreferredDuringSchedulingIgnoredDuringExecution
+		if override.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution != nil {
+			if merged.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution == nil {
+				merged.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.PreferredSchedulingTerm{}
+			}
+			merged.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution = append(
+				merged.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution,
+				override.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution...,
+			)
+		}
+	}
+
+	// Merge PodAffinity
+	if override.PodAffinity != nil {
+		if merged.PodAffinity == nil {
+			merged.PodAffinity = &corev1.PodAffinity{}
+		}
+
+		// Merge RequiredDuringSchedulingIgnoredDuringExecution
+		if override.PodAffinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
+			if merged.PodAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+				merged.PodAffinity.RequiredDuringSchedulingIgnoredDuringExecution = []corev1.PodAffinityTerm{}
+			}
+			merged.PodAffinity.RequiredDuringSchedulingIgnoredDuringExecution = append(
+				merged.PodAffinity.RequiredDuringSchedulingIgnoredDuringExecution,
+				override.PodAffinity.RequiredDuringSchedulingIgnoredDuringExecution...,
+			)
+		}
+
+		// Merge PreferredDuringSchedulingIgnoredDuringExecution
+		if override.PodAffinity.PreferredDuringSchedulingIgnoredDuringExecution != nil {
+			if merged.PodAffinity.PreferredDuringSchedulingIgnoredDuringExecution == nil {
+				merged.PodAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{}
+			}
+			merged.PodAffinity.PreferredDuringSchedulingIgnoredDuringExecution = append(
+				merged.PodAffinity.PreferredDuringSchedulingIgnoredDuringExecution,
+				override.PodAffinity.PreferredDuringSchedulingIgnoredDuringExecution...,
+			)
+		}
+	}
+
+	// Merge PodAntiAffinity
+	if override.PodAntiAffinity != nil {
+		if merged.PodAntiAffinity == nil {
+			merged.PodAntiAffinity = &corev1.PodAntiAffinity{}
+		}
+
+		// Merge RequiredDuringSchedulingIgnoredDuringExecution
+		if override.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
+			if merged.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+				merged.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution = []corev1.PodAffinityTerm{}
+			}
+			merged.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution = append(
+				merged.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution,
+				override.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution...,
+			)
+		}
+
+		// Merge PreferredDuringSchedulingIgnoredDuringExecution
+		if override.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution != nil {
+			if merged.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution == nil {
+				merged.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{}
+			}
+			merged.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = append(
+				merged.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution,
+				override.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution...,
+			)
+		}
+	}
+
+	return merged
+}
+
 // Image returns the first mysqld flavor image that's set.
 func (image *MysqldImage) Image() string {
 	switch {

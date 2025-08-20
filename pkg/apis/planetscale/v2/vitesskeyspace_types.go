@@ -69,6 +69,10 @@ type VitessKeyspaceSpec struct {
 	// for all cells defined in the VitessCluster.
 	ZoneMap map[string]string `json:"zoneMap"`
 
+	// AffinityMap is a map from Vitess cell name to affinity settings
+	// for all cells defined in the VitessCluster.
+	AffinityMap map[string]*corev1.Affinity `json:"affinityMap,omitempty"`
+
 	// BackupLocations are the backup locations defined in the VitessCluster.
 	BackupLocations []VitessBackupLocation `json:"backupLocations,omitempty"`
 

@@ -116,7 +116,7 @@ string
 </td>
 <td>
 <p>Zone is the name of the Availability Zone that this lockserver should run in.
-This value should match the value of the &ldquo;failure-domain.beta.kubernetes.io/zone&rdquo;
+This value should match the value of the &ldquo;topology.kubernetes.io/zone&rdquo;
 label on the Kubernetes Nodes in that AZ.
 If the Kubernetes Nodes don&rsquo;t have such a label, leave this empty.</p>
 </td>
@@ -279,6 +279,21 @@ VitessClusterSpec
 <br/>
 <br/>
 <table>
+<tr>
+<td>
+<code>affinity</code><br>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.32/#affinity-v1-core">
+Kubernetes core/v1.Affinity
+</a>
+</em>
+</td>
+<td>
+<p>Affinity is the top-level affinity setting that applies to all pods
+managed by this VitessCluster. This merges with cell-level affinity
+settings, with cell-level settings taking precedence for overlapping fields.</p>
+</td>
+</tr>
 <tr>
 <td>
 <code>images</code><br>
@@ -822,7 +837,7 @@ string
 </td>
 <td>
 <p>Zone is the name of the Availability Zone that this lockserver should run in.
-This value should match the value of the &ldquo;failure-domain.beta.kubernetes.io/zone&rdquo;
+This value should match the value of the &ldquo;topology.kubernetes.io/zone&rdquo;
 label on the Kubernetes Nodes in that AZ.
 If the Kubernetes Nodes don&rsquo;t have such a label, leave this empty.</p>
 </td>
@@ -4070,9 +4085,25 @@ string
 </td>
 <td>
 <p>Zone is the name of the Availability Zone that this Vitess Cell should run in.
-This value should match the value of the &ldquo;failure-domain.beta.kubernetes.io/zone&rdquo;
+This value should match the value of the &ldquo;topology.kubernetes.io/zone&rdquo;
 label on the Kubernetes Nodes in that AZ.
 If the Kubernetes Nodes don&rsquo;t have such a label, leave this empty.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>affinity</code><br>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.32/#affinity-v1-core">
+Kubernetes core/v1.Affinity
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Affinity allows you to set rules that constrain the scheduling of
+all pods in this cell. This will be applied to vtgate, vttablet,
+and other components deployed in this cell.</p>
 </td>
 </tr>
 <tr>
@@ -4308,6 +4339,21 @@ are deployed.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>
+<code>affinity</code><br>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.32/#affinity-v1-core">
+Kubernetes core/v1.Affinity
+</a>
+</em>
+</td>
+<td>
+<p>Affinity is the top-level affinity setting that applies to all pods
+managed by this VitessCluster. This merges with cell-level affinity
+settings, with cell-level settings taking precedence for overlapping fields.</p>
+</td>
+</tr>
 <tr>
 <td>
 <code>images</code><br>
@@ -5564,6 +5610,20 @@ for all cells defined in the VitessCluster.</p>
 </tr>
 <tr>
 <td>
+<code>affinityMap</code><br>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.32/#*k8s.io/api/core/v1.affinity--">
+map[string]*k8s.io/api/core/v1.Affinity
+</a>
+</em>
+</td>
+<td>
+<p>AffinityMap is a map from Vitess cell name to affinity settings
+for all cells defined in the VitessCluster.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>backupLocations</code><br>
 <em>
 <a href="#planetscale.com/v2.VitessBackupLocation">
@@ -6348,6 +6408,20 @@ map[string]string
 </td>
 <td>
 <p>ZoneMap is a map from Vitess cell name to zone (failure domain) name
+for all cells defined in the VitessCluster.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>affinityMap</code><br>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.32/#*k8s.io/api/core/v1.affinity--">
+map[string]*k8s.io/api/core/v1.Affinity
+</a>
+</em>
+</td>
+<td>
+<p>AffinityMap is a map from Vitess cell name to affinity settings
 for all cells defined in the VitessCluster.</p>
 </td>
 </tr>
@@ -7263,6 +7337,20 @@ for all cells defined in the VitessCluster.</p>
 </tr>
 <tr>
 <td>
+<code>affinityMap</code><br>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.32/#*k8s.io/api/core/v1.affinity--">
+map[string]*k8s.io/api/core/v1.Affinity
+</a>
+</em>
+</td>
+<td>
+<p>AffinityMap is a map from Vitess cell name to affinity settings
+for all cells defined in the VitessCluster.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>images</code><br>
 <em>
 <a href="#planetscale.com/v2.VitessKeyspaceImages">
@@ -7567,6 +7655,20 @@ map[string]string
 </td>
 <td>
 <p>ZoneMap is a map from Vitess cell name to zone (failure domain) name
+for all cells defined in the VitessCluster.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>affinityMap</code><br>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.32/#*k8s.io/api/core/v1.affinity--">
+map[string]*k8s.io/api/core/v1.Affinity
+</a>
+</em>
+</td>
+<td>
+<p>AffinityMap is a map from Vitess cell name to affinity settings
 for all cells defined in the VitessCluster.</p>
 </td>
 </tr>

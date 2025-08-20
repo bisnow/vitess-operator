@@ -98,6 +98,12 @@ type VitessCellTemplate struct {
 	// If the Kubernetes Nodes don't have such a label, leave this empty.
 	Zone string `json:"zone,omitempty"`
 
+	// Affinity allows you to set rules that constrain the scheduling of
+	// all pods in this cell. This will be applied to vtgate, vttablet,
+	// and other components deployed in this cell.
+	// +optional
+	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+
 	// Lockserver specifies either a deployed or external lockserver
 	// to be used as the Vitess cell-local topology store.
 	// Default: Put this cell's topology data in the global lockserver instead of its own lockserver.

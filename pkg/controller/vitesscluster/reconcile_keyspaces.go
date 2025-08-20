@@ -180,6 +180,7 @@ func newVitessKeyspace(key client.ObjectKey, vt *planetscalev2.VitessCluster, pa
 			ImagePullPolicies:      vt.Spec.ImagePullPolicies,
 			ImagePullSecrets:       vt.Spec.ImagePullSecrets,
 			ZoneMap:                vt.Spec.ZoneMap(),
+			AffinityMap:            vt.Spec.AffinityMap(),
 			BackupLocations:        backupLocations,
 			BackupEngine:           backupEngine,
 			ExtraVitessFlags:       vt.Spec.ExtraVitessFlags,

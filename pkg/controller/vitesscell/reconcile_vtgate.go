@@ -125,6 +125,17 @@ func (r *ReconcileVitessCell) reconcileVtgate(ctx context.Context, vtc *planetsc
 	update.StringMap(&extraFlags, vtc.Spec.ExtraVitessFlags)
 	update.StringMap(&extraFlags, vtc.Spec.Gateway.ExtraFlags)
 
+	// Get the merged affinity for this cell
+	// The cell spec should already contain the merged affinity from top-level + cell-level
+	var affinity *corev1.Affinity
+	if vtc.Spec.Affinity != nil {
+		// Use cell-level affinity (this should already be merged with top-level via AffinityMap)
+		affinity = vtc.Spec.Affinity
+	} else if vtc.Spec.Gateway.Affinity != nil {
+		// Fall back to gateway-specific affinity if no cell-level affinity
+		affinity = vtc.Spec.Gateway.Affinity
+	}
+
 	// Reconcile vtgate Deployment.
 	spec := &vtgate.Spec{
 		Cell:                          &vtc.Spec,
@@ -133,7 +144,7 @@ func (r *ReconcileVitessCell) reconcileVtgate(ctx context.Context, vtc *planetsc
 		Resources:                     vtc.Spec.Gateway.Resources,
 		Authentication:                &vtc.Spec.Gateway.Authentication,
 		SecureTransport:               vtc.Spec.Gateway.SecureTransport,
-		Affinity:                      vtc.Spec.Gateway.Affinity,
+		Affinity:                      affinity,
 		ExtraFlags:                    extraFlags,
 		ExtraEnv:                      vtc.Spec.Gateway.ExtraEnv,
 		ExtraVolumes:                  vtc.Spec.Gateway.ExtraVolumes,
