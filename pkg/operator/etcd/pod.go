@@ -246,43 +246,57 @@ func UpdatePod(obj *corev1.Pod, spec *Spec) {
 	if spec.Affinity != nil {
 		obj.Spec.Affinity = spec.Affinity
 	} else {
-		obj.Spec.Affinity = &corev1.Affinity{
-			// Try to spread the replicas across Nodes if possible.
-			PodAntiAffinity: &corev1.PodAntiAffinity{
-				PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
-					{
-						Weight: 2,
-						PodAffinityTerm: corev1.PodAffinityTerm{
-							LabelSelector: &metav1.LabelSelector{
-								MatchLabels: map[string]string{
-									LockserverLabel: spec.LockserverName,
-								},
-							},
-							TopologyKey: k8s.HostnameLabel,
-						},
+		if obj.Spec.Affinity == nil {
+			obj.Spec.Affinity = &corev1.Affinity{}
+		}
+		if obj.Spec.Affinity.PodAntiAffinity == nil {
+			obj.Spec.Affinity.PodAntiAffinity = &corev1.PodAntiAffinity{}
+		}
+		paa := &obj.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution
+		*paa = append(*paa, corev1.WeightedPodAffinityTerm{
+			// Weight zone spreading as less important than node spreading.
+			Weight: 2,
+			PodAffinityTerm: corev1.PodAffinityTerm{
+				LabelSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						LockserverLabel: spec.LockserverName,
 					},
 				},
+				TopologyKey: k8s.HostnameLabel,
 			},
-		}
+		})
 		if spec.Zone != "" {
 			// Limit to a specific zone.
-			obj.Spec.Affinity.NodeAffinity = &corev1.NodeAffinity{
-				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-					NodeSelectorTerms: []corev1.NodeSelectorTerm{
-						{
-							MatchExpressions: []corev1.NodeSelectorRequirement{
-								{
-									Key:      k8s.ZoneFailureDomainLabel,
-									Operator: corev1.NodeSelectorOpIn,
-									Values:   []string{spec.Zone},
-								},
-							},
-						},
-					},
-				},
+			if obj.Spec.Affinity == nil {
+				obj.Spec.Affinity = &corev1.Affinity{}
 			}
+			if obj.Spec.Affinity.NodeAffinity == nil {
+				obj.Spec.Affinity.NodeAffinity = &corev1.NodeAffinity{}
+			}
+			if obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+				obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
+			}
+
+			// Add zone requirement to existing node affinity
+			zoneRequirement := corev1.NodeSelectorRequirement{
+				Key:      k8s.ZoneFailureDomainLabel,
+				Operator: corev1.NodeSelectorOpIn,
+				Values:   []string{spec.Zone},
+			}
+			obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
+				obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
+				corev1.NodeSelectorTerm{
+					MatchExpressions: []corev1.NodeSelectorRequirement{zoneRequirement},
+				},
+			)
 		} else {
 			// If we're not limited to one zone, try to spread across zones.
+			if obj.Spec.Affinity == nil {
+				obj.Spec.Affinity = &corev1.Affinity{}
+			}
+			if obj.Spec.Affinity.PodAntiAffinity == nil {
+				obj.Spec.Affinity.PodAntiAffinity = &corev1.PodAntiAffinity{}
+			}
 			paa := &obj.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution
 			*paa = append(*paa, corev1.WeightedPodAffinityTerm{
 				// Weight zone spreading as less important than node spreading.

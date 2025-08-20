@@ -93,7 +93,7 @@ type VitessCellTemplate struct {
 	Name string `json:"name"`
 
 	// Zone is the name of the Availability Zone that this Vitess Cell should run in.
-	// This value should match the value of the "failure-domain.beta.kubernetes.io/zone"
+	// This value should match the value of the "topology.kubernetes.io/zone"
 	// label on the Kubernetes Nodes in that AZ.
 	// If the Kubernetes Nodes don't have such a label, leave this empty.
 	Zone string `json:"zone,omitempty"`

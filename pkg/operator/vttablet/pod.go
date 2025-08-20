@@ -341,6 +341,28 @@ func UpdatePod(obj *corev1.Pod, spec *Spec) {
 	// simply override the pod's existing affinity configuration.
 	if spec.Affinity != nil {
 		obj.Spec.Affinity = spec.Affinity
+		// If zone is specified, merge zone requirement with custom affinity
+		if spec.Zone != "" {
+			if obj.Spec.Affinity.NodeAffinity == nil {
+				obj.Spec.Affinity.NodeAffinity = &corev1.NodeAffinity{}
+			}
+			if obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+				obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
+			}
+
+			// Add zone requirement to existing node affinity
+			zoneRequirement := corev1.NodeSelectorRequirement{
+				Key:      k8s.ZoneFailureDomainLabel,
+				Operator: corev1.NodeSelectorOpIn,
+				Values:   []string{spec.Zone},
+			}
+			obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
+				obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
+				corev1.NodeSelectorTerm{
+					MatchExpressions: []corev1.NodeSelectorRequirement{zoneRequirement},
+				},
+			)
+		}
 	} else {
 		obj.Spec.Affinity = &corev1.Affinity{
 			PodAntiAffinity: &corev1.PodAntiAffinity{

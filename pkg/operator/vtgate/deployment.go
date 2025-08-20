@@ -142,6 +142,28 @@ func UpdateDeployment(obj *appsv1.Deployment, spec *Spec, mysqldImage string) {
 
 	if spec.Affinity != nil {
 		obj.Spec.Template.Spec.Affinity = spec.Affinity
+		// If zone is specified, merge zone requirement with custom affinity
+		if spec.Cell.Zone != "" {
+			if obj.Spec.Template.Spec.Affinity.NodeAffinity == nil {
+				obj.Spec.Template.Spec.Affinity.NodeAffinity = &corev1.NodeAffinity{}
+			}
+			if obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+				obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
+			}
+
+			// Add zone requirement to existing node affinity
+			zoneRequirement := corev1.NodeSelectorRequirement{
+				Key:      k8s.ZoneFailureDomainLabel,
+				Operator: corev1.NodeSelectorOpIn,
+				Values:   []string{spec.Cell.Zone},
+			}
+			obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
+				obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
+				corev1.NodeSelectorTerm{
+					MatchExpressions: []corev1.NodeSelectorRequirement{zoneRequirement},
+				},
+			)
+		}
 	} else if spec.Cell.Zone != "" {
 		// Limit to a specific zone.
 		obj.Spec.Template.Spec.Affinity = &corev1.Affinity{

@@ -185,6 +185,28 @@ func UpdateDeployment(obj *appsv1.Deployment, spec *Spec) {
 
 	if spec.Affinity != nil {
 		obj.Spec.Template.Spec.Affinity = spec.Affinity
+		// If zone is specified, merge zone requirement with custom affinity
+		if spec.Zone != "" {
+			if obj.Spec.Template.Spec.Affinity.NodeAffinity == nil {
+				obj.Spec.Template.Spec.Affinity.NodeAffinity = &corev1.NodeAffinity{}
+			}
+			if obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+				obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
+			}
+
+			// Add zone requirement to existing node affinity
+			zoneRequirement := corev1.NodeSelectorRequirement{
+				Key:      k8s.ZoneFailureDomainLabel,
+				Operator: corev1.NodeSelectorOpIn,
+				Values:   []string{spec.Zone},
+			}
+			obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
+				obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
+				corev1.NodeSelectorTerm{
+					MatchExpressions: []corev1.NodeSelectorRequirement{zoneRequirement},
+				},
+			)
+		}
 	} else if spec.Zone != "" {
 		// Limit to a specific zone.
 		obj.Spec.Template.Spec.Affinity = &corev1.Affinity{

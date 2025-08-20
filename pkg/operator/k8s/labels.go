@@ -18,7 +18,9 @@ package k8s
 
 const (
 	// ZoneFailureDomainLabel is the label on Kubernetes Nodes specifying what AZ it's in.
-	ZoneFailureDomainLabel = "failure-domain.beta.kubernetes.io/zone"
+	// This uses the modern topology.kubernetes.io/zone label which replaced the deprecated
+	// failure-domain.beta.kubernetes.io/zone label in Kubernetes 1.17+.
+	ZoneFailureDomainLabel = "topology.kubernetes.io/zone"
 	// HostnameLabel is the affinity topology key used to distinguish Kuberenetes Nodes from each other.
 	HostnameLabel = "kubernetes.io/hostname"
 )
