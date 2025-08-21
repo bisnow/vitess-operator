@@ -74,7 +74,8 @@ func (s *VitessClusterSpec) AffinityMap() map[string]*corev1.Affinity {
 }
 
 // mergeAffinities merges two affinity objects, with the second one taking precedence
-// for fields that are set in both.
+// for fields that are set in both. Zone constraints are NOT merged from global affinity
+// to maintain cell isolation.
 func mergeAffinities(base, override *corev1.Affinity) *corev1.Affinity {
 	if base == nil {
 		return override.DeepCopy()
@@ -96,6 +97,29 @@ func mergeAffinities(base, override *corev1.Affinity) *corev1.Affinity {
 			if merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
 				merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
 			}
+
+			// Filter out zone constraints from base affinity to prevent merging
+			filteredBaseTerms := []corev1.NodeSelectorTerm{}
+			for _, term := range merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
+				filteredMatchExpressions := []corev1.NodeSelectorRequirement{}
+				for _, expr := range term.MatchExpressions {
+					// Skip zone constraints from base affinity
+					if expr.Key != "failure-domain.beta.kubernetes.io/zone" &&
+						expr.Key != "topology.kubernetes.io/zone" {
+						filteredMatchExpressions = append(filteredMatchExpressions, expr)
+					}
+				}
+				if len(filteredMatchExpressions) > 0 {
+					filteredTerm := term.DeepCopy()
+					filteredTerm.MatchExpressions = filteredMatchExpressions
+					filteredBaseTerms = append(filteredBaseTerms, *filteredTerm)
+				}
+			}
+
+			// Start with filtered base terms
+			merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = filteredBaseTerms
+
+			// Add override terms (which include cell-specific zone constraints)
 			merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
 				merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
 				override.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms...,

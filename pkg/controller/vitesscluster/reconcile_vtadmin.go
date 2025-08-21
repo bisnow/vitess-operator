@@ -169,6 +169,9 @@ func (r *ReconcileVitessCluster) vtadminSpecs(ctx context.Context, vt *planetsca
 		}
 	}
 
+	// Get the merged affinity map for all cells (global + cell-specific)
+	affinityMap := vt.Spec.AffinityMap()
+
 	// Make a vtadmin Deployment spec for each cell.
 	specs := make([]*vtadmin.Spec, 0, len(cells))
 	for idx, cell := range cells {
@@ -199,6 +202,17 @@ func (r *ReconcileVitessCluster) vtadminSpecs(ctx context.Context, vt *planetsca
 			return nil, err
 		}
 
+		// Determine affinity: cell-level affinity takes precedence over component-level affinity
+		var affinity *corev1.Affinity
+		if cellAffinity, exists := affinityMap[cell.Name]; exists && cellAffinity != nil {
+			// Use cell-level affinity (this should already be merged with top-level via AffinityMap)
+			// Note: The AffinityMap method should handle zone constraints correctly
+			affinity = cellAffinity
+		} else if vt.Spec.VtAdmin.Affinity != nil {
+			// Fall back to component-specific affinity if no cell-level affinity
+			affinity = vt.Spec.VtAdmin.Affinity
+		}
+
 		specs = append(specs, &vtadmin.Spec{
 			Cell:              cell,
 			Discovery:         discoverySecret,
@@ -212,7 +226,7 @@ func (r *ReconcileVitessCluster) vtadminSpecs(ctx context.Context, vt *planetsca
 			Replicas:          *vt.Spec.VtAdmin.Replicas,
 			APIResources:      vt.Spec.VtAdmin.APIResources,
 			WebResources:      vt.Spec.VtAdmin.WebResources,
-			Affinity:          vt.Spec.VtAdmin.Affinity,
+			Affinity:          affinity,
 			ExtraFlags:        extraFlags,
 			ExtraEnv:          vt.Spec.VtAdmin.ExtraEnv,
 			ExtraVolumes:      vt.Spec.VtAdmin.ExtraVolumes,

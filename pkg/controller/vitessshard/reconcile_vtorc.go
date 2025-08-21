@@ -108,6 +108,9 @@ func (r *ReconcileVitessShard) vtorcSpecs(vts *planetscalev2.VitessShard, parent
 		return nil
 	}
 
+	// Get the global cluster affinity to merge with keyspace/shard level affinity
+	globalAffinity := r.getGlobalClusterAffinity(vts)
+
 	specs := make([]*vtorc.Spec, 0, len(vts.Spec.TabletPools))
 
 	// Deploy no more than one VTOrc per cell.
@@ -135,6 +138,9 @@ func (r *ReconcileVitessShard) vtorcSpecs(vts *planetscalev2.VitessShard, parent
 		update.StringMap(&extraFlags, vts.Spec.ExtraVitessFlags)
 		update.StringMap(&extraFlags, vts.Spec.VitessOrchestrator.ExtraFlags)
 
+		// Merge global affinity with keyspace/shard level affinity
+		mergedAffinity := r.mergeAffinity(globalAffinity, vts.Spec.VitessOrchestrator.Affinity)
+
 		specs = append(specs, &vtorc.Spec{
 			GlobalLockserver:  vts.Spec.GlobalLockserver,
 			Image:             vts.Spec.Images.Vtorc,
@@ -146,7 +152,7 @@ func (r *ReconcileVitessShard) vtorcSpecs(vts *planetscalev2.VitessShard, parent
 			Zone:              vts.Spec.ZoneMap[tabletPool.Cell],
 			Labels:            labels,
 			Resources:         vts.Spec.VitessOrchestrator.Resources,
-			Affinity:          vts.Spec.VitessOrchestrator.Affinity,
+			Affinity:          mergedAffinity,
 			ExtraFlags:        extraFlags,
 			ExtraEnv:          vts.Spec.VitessOrchestrator.ExtraEnv,
 			ExtraVolumes:      vts.Spec.VitessOrchestrator.ExtraVolumes,
@@ -159,4 +165,139 @@ func (r *ReconcileVitessShard) vtorcSpecs(vts *planetscalev2.VitessShard, parent
 		})
 	}
 	return specs
+}
+
+// getGlobalClusterAffinity retrieves the global affinity from the VitessCluster
+func (r *ReconcileVitessShard) getGlobalClusterAffinity(vts *planetscalev2.VitessShard) *corev1.Affinity {
+	clusterName := vts.Labels[planetscalev2.ClusterLabel]
+	cluster := &planetscalev2.VitessCluster{}
+
+	// Try to get the cluster to access global affinity
+	err := r.client.Get(context.Background(), client.ObjectKey{
+		Namespace: vts.Namespace,
+		Name:      clusterName,
+	}, cluster)
+
+	if err != nil {
+		// If we can't get the cluster, return nil (no global affinity)
+		return nil
+	}
+
+	return cluster.Spec.Affinity
+}
+
+// mergeAffinity merges global affinity with local affinity, prioritizing local affinity
+// Note: Zone constraints are NOT merged from global affinity as they are cell-specific
+func (r *ReconcileVitessShard) mergeAffinity(global, local *corev1.Affinity) *corev1.Affinity {
+	if local != nil {
+		// If local affinity exists, merge global affinity into it
+		if global != nil && global.NodeAffinity != nil {
+			if local.NodeAffinity == nil {
+				local.NodeAffinity = &corev1.NodeAffinity{}
+			}
+			if local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+				local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
+			}
+
+			// Merge global node affinity requirements into local affinity
+			// EXCEPT for zone constraints which should remain cell-specific
+			for _, globalTerm := range global.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
+				// Check if we already have a term with the same key
+				merged := false
+				for i, localTerm := range local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
+					for j, localExpr := range localTerm.MatchExpressions {
+						for _, globalExpr := range globalTerm.MatchExpressions {
+							// Skip zone constraints - they should not be merged from global affinity
+							if globalExpr.Key == "failure-domain.beta.kubernetes.io/zone" ||
+								globalExpr.Key == "topology.kubernetes.io/zone" {
+								continue
+							}
+
+							if localExpr.Key == globalExpr.Key {
+								// Merge values for the same key
+								existingValues := local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[i].MatchExpressions[j].Values
+								for _, globalValue := range globalExpr.Values {
+									found := false
+									for _, existingValue := range existingValues {
+										if existingValue == globalValue {
+											found = true
+											break
+										}
+									}
+									if !found {
+										local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[i].MatchExpressions[j].Values = append(existingValues, globalValue)
+									}
+								}
+								merged = true
+								break
+							}
+						}
+						if merged {
+							break
+						}
+					}
+					if merged {
+						break
+					}
+				}
+
+				// If no matching key found, add the global term (but skip zone constraints)
+				if !merged {
+					// Filter out zone constraints from global terms
+					filteredTerm := globalTerm.DeepCopy()
+					filteredMatchExpressions := []corev1.NodeSelectorRequirement{}
+
+					for _, expr := range filteredTerm.MatchExpressions {
+						if expr.Key != "failure-domain.beta.kubernetes.io/zone" &&
+							expr.Key != "topology.kubernetes.io/zone" {
+							filteredMatchExpressions = append(filteredMatchExpressions, expr)
+						}
+					}
+
+					// Only add the term if it has non-zone constraints
+					if len(filteredMatchExpressions) > 0 {
+						filteredTerm.MatchExpressions = filteredMatchExpressions
+						local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
+							local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
+							*filteredTerm,
+						)
+					}
+				}
+			}
+		}
+		return local
+	}
+
+	// If no local affinity, return global affinity (but filter out zone constraints)
+	if global != nil && global.NodeAffinity != nil {
+		filteredGlobal := global.DeepCopy()
+		if filteredGlobal.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
+			filteredTerms := []corev1.NodeSelectorTerm{}
+
+			for _, term := range filteredGlobal.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
+				filteredMatchExpressions := []corev1.NodeSelectorRequirement{}
+
+				for _, expr := range term.MatchExpressions {
+					if expr.Key != "failure-domain.beta.kubernetes.io/zone" &&
+						expr.Key != "topology.kubernetes.io/zone" {
+						filteredMatchExpressions = append(filteredMatchExpressions, expr)
+					}
+				}
+
+				// Only add the term if it has non-zone constraints
+				if len(filteredMatchExpressions) > 0 {
+					filteredTerm := term.DeepCopy()
+					filteredTerm.MatchExpressions = filteredMatchExpressions
+					filteredTerms = append(filteredTerms, *filteredTerm)
+				}
+			}
+
+			if len(filteredTerms) > 0 {
+				filteredGlobal.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = filteredTerms
+				return filteredGlobal
+			}
+		}
+	}
+
+	return nil
 }

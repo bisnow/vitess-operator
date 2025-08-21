@@ -143,6 +143,9 @@ func (r *ReconcileVitessCluster) vtctldSpecs(vt *planetscalev2.VitessCluster, pa
 
 	glsParams := lockserver.GlobalConnectionParams(&vt.Spec.GlobalLockserver, vt.Namespace, vt.Name)
 
+	// Get the merged affinity map for all cells (global + cell-specific)
+	affinityMap := vt.Spec.AffinityMap()
+
 	// Make a vtctld Deployment spec for each cell.
 	specs := make([]*vtctld.Spec, 0, len(cells))
 	for _, cell := range cells {
@@ -170,6 +173,17 @@ func (r *ReconcileVitessCluster) vtctldSpecs(vt *planetscalev2.VitessCluster, pa
 			backupEngine = vt.Spec.Backup.Engine
 		}
 
+		// Determine affinity: cell-level affinity takes precedence over component-level affinity
+		var affinity *corev1.Affinity
+		if cellAffinity, exists := affinityMap[cell.Name]; exists && cellAffinity != nil {
+			// Use cell-level affinity (this should already be merged with top-level via AffinityMap)
+			// Note: The AffinityMap method should handle zone constraints correctly
+			affinity = cellAffinity
+		} else if vt.Spec.VitessDashboard.Affinity != nil {
+			// Fall back to component-specific affinity if no cell-level affinity
+			affinity = vt.Spec.VitessDashboard.Affinity
+		}
+
 		specs = append(specs, &vtctld.Spec{
 			GlobalLockserver:  glsParams,
 			Image:             vt.Spec.Images.Vtctld,
@@ -179,7 +193,7 @@ func (r *ReconcileVitessCluster) vtctldSpecs(vt *planetscalev2.VitessCluster, pa
 			Labels:            labels,
 			Replicas:          *vt.Spec.VitessDashboard.Replicas,
 			Resources:         vt.Spec.VitessDashboard.Resources,
-			Affinity:          vt.Spec.VitessDashboard.Affinity,
+			Affinity:          affinity,
 			ExtraFlags:        extraFlags,
 			ExtraEnv:          vt.Spec.VitessDashboard.ExtraEnv,
 			ExtraVolumes:      vt.Spec.VitessDashboard.ExtraVolumes,
