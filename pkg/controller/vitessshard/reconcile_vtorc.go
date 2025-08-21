@@ -199,67 +199,57 @@ func (r *ReconcileVitessShard) mergeAffinity(global, local *corev1.Affinity) *co
 				local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
 			}
 
-			// Merge global node affinity requirements into local affinity
+			// Ensure we have at least one term to merge into
+			if len(local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms) == 0 {
+				local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = []corev1.NodeSelectorTerm{
+					{MatchExpressions: []corev1.NodeSelectorRequirement{}},
+				}
+			}
+
+			// Merge global node affinity requirements into the first local term
 			// EXCEPT for zone constraints which should remain cell-specific
 			for _, globalTerm := range global.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
-				// Check if we already have a term with the same key
-				merged := false
-				for i, localTerm := range local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
-					for j, localExpr := range localTerm.MatchExpressions {
-						for _, globalExpr := range globalTerm.MatchExpressions {
-							// Skip zone constraints - they should not be merged from global affinity
-							if globalExpr.Key == "failure-domain.beta.kubernetes.io/zone" ||
-								globalExpr.Key == "topology.kubernetes.io/zone" {
-								continue
-							}
+				for _, globalExpr := range globalTerm.MatchExpressions {
+					// Skip zone constraints - they should not be merged from global affinity
+					if globalExpr.Key == "failure-domain.beta.kubernetes.io/zone" ||
+						globalExpr.Key == "topology.kubernetes.io/zone" {
+						continue
+					}
 
-							if localExpr.Key == globalExpr.Key {
-								// Merge values for the same key
-								existingValues := local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[i].MatchExpressions[j].Values
-								for _, globalValue := range globalExpr.Values {
-									found := false
-									for _, existingValue := range existingValues {
-										if existingValue == globalValue {
-											found = true
-											break
-										}
-									}
-									if !found {
-										local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[i].MatchExpressions[j].Values = append(existingValues, globalValue)
+					// Check if we already have this key in the first local term
+					keyExists := false
+					for _, localExpr := range local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions {
+						if localExpr.Key == globalExpr.Key {
+							// Merge values for the same key
+							for _, globalValue := range globalExpr.Values {
+								found := false
+								for _, existingValue := range localExpr.Values {
+									if existingValue == globalValue {
+										found = true
+										break
 									}
 								}
-								merged = true
-								break
+								if !found {
+									local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions = append(
+										local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions,
+										corev1.NodeSelectorRequirement{
+											Key:      globalExpr.Key,
+											Operator: globalExpr.Operator,
+											Values:   []string{globalValue},
+										},
+									)
+								}
 							}
-						}
-						if merged {
+							keyExists = true
 							break
 						}
 					}
-					if merged {
-						break
-					}
-				}
 
-				// If no matching key found, add the global term (but skip zone constraints)
-				if !merged {
-					// Filter out zone constraints from global terms
-					filteredTerm := globalTerm.DeepCopy()
-					filteredMatchExpressions := []corev1.NodeSelectorRequirement{}
-
-					for _, expr := range filteredTerm.MatchExpressions {
-						if expr.Key != "failure-domain.beta.kubernetes.io/zone" &&
-							expr.Key != "topology.kubernetes.io/zone" {
-							filteredMatchExpressions = append(filteredMatchExpressions, expr)
-						}
-					}
-
-					// Only add the term if it has non-zone constraints
-					if len(filteredMatchExpressions) > 0 {
-						filteredTerm.MatchExpressions = filteredMatchExpressions
-						local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
-							local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
-							*filteredTerm,
+					// If key doesn't exist, add it to the first local term
+					if !keyExists {
+						local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions = append(
+							local.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions,
+							globalExpr,
 						)
 					}
 				}

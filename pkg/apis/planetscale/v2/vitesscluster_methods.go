@@ -75,7 +75,7 @@ func (s *VitessClusterSpec) AffinityMap() map[string]*corev1.Affinity {
 
 // mergeAffinities merges two affinity objects, with the second one taking precedence
 // for fields that are set in both. Zone constraints are NOT merged from global affinity
-// to maintain cell isolation.
+// to maintain cell isolation. All constraints are merged into a single nodeSelectorTerm.
 func mergeAffinities(base, override *corev1.Affinity) *corev1.Affinity {
 	if base == nil {
 		return override.DeepCopy()
@@ -96,6 +96,13 @@ func mergeAffinities(base, override *corev1.Affinity) *corev1.Affinity {
 		if override.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
 			if merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
 				merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
+			}
+
+			// Ensure we have at least one term to merge into
+			if len(merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms) == 0 {
+				merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = []corev1.NodeSelectorTerm{
+					{MatchExpressions: []corev1.NodeSelectorRequirement{}},
+				}
 			}
 
 			// Filter out zone constraints from base affinity to prevent merging
@@ -119,11 +126,54 @@ func mergeAffinities(base, override *corev1.Affinity) *corev1.Affinity {
 			// Start with filtered base terms
 			merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = filteredBaseTerms
 
-			// Add override terms (which include cell-specific zone constraints)
-			merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
-				merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
-				override.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms...,
-			)
+			// Merge override terms into the first base term (or create a new one if none exist)
+			if len(merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms) == 0 {
+				merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = []corev1.NodeSelectorTerm{
+					{MatchExpressions: []corev1.NodeSelectorRequirement{}},
+				}
+			}
+
+			// Merge all override expressions into the first term
+			for _, overrideTerm := range override.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
+				for _, overrideExpr := range overrideTerm.MatchExpressions {
+					// Check if we already have this key in the first term
+					keyExists := false
+					for _, existingExpr := range merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions {
+						if existingExpr.Key == overrideExpr.Key {
+							// Merge values for the same key
+							for _, overrideValue := range overrideExpr.Values {
+								found := false
+								for _, existingValue := range existingExpr.Values {
+									if existingValue == overrideValue {
+										found = true
+										break
+									}
+								}
+								if !found {
+									merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions = append(
+										merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions,
+										corev1.NodeSelectorRequirement{
+											Key:      overrideExpr.Key,
+											Operator: overrideExpr.Operator,
+											Values:   []string{overrideValue},
+										},
+									)
+								}
+							}
+							keyExists = true
+							break
+						}
+					}
+
+					// If key doesn't exist, add it to the first term
+					if !keyExists {
+						merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions = append(
+							merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions,
+							overrideExpr,
+						)
+					}
+				}
+			}
 		}
 
 		// Merge PreferredDuringSchedulingIgnoredDuringExecution
