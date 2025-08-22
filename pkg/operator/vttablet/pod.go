@@ -337,11 +337,44 @@ func UpdatePod(obj *corev1.Pod, spec *Spec) {
 		obj.Spec.TerminationGracePeriodSeconds = ptr.To(int64(defaultTerminationGracePeriodSeconds))
 	}
 
-	// In both the case of the user injecting their own affinity and the default, we
-	// simply override the pod's existing affinity configuration.
+	// Handle affinity and zone constraints
 	if spec.Affinity != nil {
-		obj.Spec.Affinity = spec.Affinity
-		// If zone is specified, merge zone requirement with custom affinity
+		// Start with the provided affinity
+		obj.Spec.Affinity = spec.Affinity.DeepCopy()
+
+		// Ensure we have default anti-affinity rules when custom affinity is provided
+		if obj.Spec.Affinity.PodAntiAffinity == nil {
+			obj.Spec.Affinity.PodAntiAffinity = &corev1.PodAntiAffinity{}
+		}
+		
+		// Add default anti-affinity rules if they don't exist
+		if len(obj.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution) == 0 {
+			obj.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{
+				{
+					// A Node with no members of the same shard would be ideal.
+					Weight: 2,
+					PodAffinityTerm: corev1.PodAffinityTerm{
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: spec.shardLabels(),
+						},
+						TopologyKey: k8s.HostnameLabel,
+					},
+				},
+				{
+					// If that's not possible, a Node that at least has no
+					// members of the exact same pool would be nice.
+					Weight: 1,
+					PodAffinityTerm: corev1.PodAffinityTerm{
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: spec.poolLabels(),
+						},
+						TopologyKey: k8s.HostnameLabel,
+					},
+				},
+			}
+		}
+
+		// If zone is specified, ensure it's properly set in the affinity
 		if spec.Zone != "" {
 			if obj.Spec.Affinity.NodeAffinity == nil {
 				obj.Spec.Affinity.NodeAffinity = &corev1.NodeAffinity{}
@@ -350,49 +383,39 @@ func UpdatePod(obj *corev1.Pod, spec *Spec) {
 				obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
 			}
 
-			// Check if we already have a zone requirement in any existing terms
-			zoneExists := false
+			// Ensure we have at least one term
+			if len(obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms) == 0 {
+				obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = []corev1.NodeSelectorTerm{
+					{MatchExpressions: []corev1.NodeSelectorRequirement{}},
+				}
+			}
+
+			// Find and update existing zone constraint or add new one
+			zoneFound := false
 			for i := range obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
 				for j := range obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[i].MatchExpressions {
 					if obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[i].MatchExpressions[j].Key == k8s.ZoneFailureDomainLabel {
-						// Zone already exists, replace the values with this cell's zone only
-						zoneExists = true
+						// Update existing zone constraint to use only the specified zone
 						obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[i].MatchExpressions[j].Values = []string{spec.Zone}
+						zoneFound = true
 						break
 					}
 				}
-				if zoneExists {
+				if zoneFound {
 					break
 				}
 			}
 
-			// If zone requirement doesn't exist, add it to the first existing term or create a new one
-			if !zoneExists {
-				if len(obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms) > 0 {
-					// Add to the first existing term
-					obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions = append(
-						obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions,
-						corev1.NodeSelectorRequirement{
-							Key:      k8s.ZoneFailureDomainLabel,
-							Operator: corev1.NodeSelectorOpIn,
-							Values:   []string{spec.Zone},
-						},
-					)
-				} else {
-					// Create a new term with just the zone requirement
-					obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
-						obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
-						corev1.NodeSelectorTerm{
-							MatchExpressions: []corev1.NodeSelectorRequirement{
-								{
-									Key:      k8s.ZoneFailureDomainLabel,
-									Operator: corev1.NodeSelectorOpIn,
-									Values:   []string{spec.Zone},
-								},
-							},
-						},
-					)
-				}
+			// If no zone constraint found, add it to the first term
+			if !zoneFound {
+				obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions = append(
+					obj.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions,
+					corev1.NodeSelectorRequirement{
+						Key:      k8s.ZoneFailureDomainLabel,
+						Operator: corev1.NodeSelectorOpIn,
+						Values:   []string{spec.Zone},
+					},
+				)
 			}
 		}
 	} else {

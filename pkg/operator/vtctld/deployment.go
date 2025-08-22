@@ -205,9 +205,12 @@ func UpdateDeployment(obj *appsv1.Deployment, spec *Spec, mysqldImage string) {
 		},
 	})
 
+	// Handle affinity and zone constraints
 	if spec.Affinity != nil {
-		obj.Spec.Template.Spec.Affinity = spec.Affinity
-		// If zone is specified, merge zone requirement with custom affinity
+		// Start with the provided affinity
+		obj.Spec.Template.Spec.Affinity = spec.Affinity.DeepCopy()
+
+		// If zone is specified, ensure it's properly set in the affinity
 		if spec.Cell.Zone != "" {
 			if obj.Spec.Template.Spec.Affinity.NodeAffinity == nil {
 				obj.Spec.Template.Spec.Affinity.NodeAffinity = &corev1.NodeAffinity{}
@@ -216,49 +219,39 @@ func UpdateDeployment(obj *appsv1.Deployment, spec *Spec, mysqldImage string) {
 				obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
 			}
 
-			// Check if we already have a zone requirement in any existing terms
-			zoneExists := false
+			// Ensure we have at least one term
+			if len(obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms) == 0 {
+				obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = []corev1.NodeSelectorTerm{
+					{MatchExpressions: []corev1.NodeSelectorRequirement{}},
+				}
+			}
+
+			// Find and update existing zone constraint or add new one
+			zoneFound := false
 			for i := range obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
 				for j := range obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[i].MatchExpressions {
 					if obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[i].MatchExpressions[j].Key == k8s.ZoneFailureDomainLabel {
-						// Zone already exists, replace the values with this cell's zone only
-						zoneExists = true
+						// Update existing zone constraint to use only the specified zone
 						obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[i].MatchExpressions[j].Values = []string{spec.Cell.Zone}
+						zoneFound = true
 						break
 					}
 				}
-				if zoneExists {
+				if zoneFound {
 					break
 				}
 			}
 
-			// If zone requirement doesn't exist, add it to the first existing term or create a new one
-			if !zoneExists {
-				if len(obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms) > 0 {
-					// Add to the first existing term
-					obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions = append(
-						obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions,
-						corev1.NodeSelectorRequirement{
-							Key:      k8s.ZoneFailureDomainLabel,
-							Operator: corev1.NodeSelectorOpIn,
-							Values:   []string{spec.Cell.Zone},
-						},
-					)
-				} else {
-					// Create a new term with just the zone requirement
-					obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(
-						obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
-						corev1.NodeSelectorTerm{
-							MatchExpressions: []corev1.NodeSelectorRequirement{
-								{
-									Key:      k8s.ZoneFailureDomainLabel,
-									Operator: corev1.NodeSelectorOpIn,
-									Values:   []string{spec.Cell.Zone},
-								},
-							},
-						},
-					)
-				}
+			// If no zone constraint found, add it to the first term
+			if !zoneFound {
+				obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions = append(
+					obj.Spec.Template.Spec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions,
+					corev1.NodeSelectorRequirement{
+						Key:      k8s.ZoneFailureDomainLabel,
+						Operator: corev1.NodeSelectorOpIn,
+						Values:   []string{spec.Cell.Zone},
+					},
+				)
 			}
 		}
 	} else if spec.Cell.Zone != "" {

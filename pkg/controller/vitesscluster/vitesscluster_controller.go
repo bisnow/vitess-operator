@@ -42,6 +42,7 @@ import (
 	"planetscale.dev/vitess-operator/pkg/operator/reconciler"
 	"planetscale.dev/vitess-operator/pkg/operator/results"
 	"planetscale.dev/vitess-operator/pkg/operator/resync"
+	"planetscale.dev/vitess-operator/pkg/operator/vtgate"
 )
 
 const (
@@ -201,9 +202,17 @@ func (r *ReconcileVitessCluster) Reconcile(cctx context.Context, request reconci
 		resultBuilder.Error(err)
 	}
 
-	// Create/update vtgate service.
-	vtgateResult, err := r.reconcileVtgate(ctx, vt)
-	resultBuilder.Merge(vtgateResult, err)
+	// Create/update vtgate service only if not using cell-specific VTGates.
+	// Skip cluster-level VTGate service when cells have their own VTGates.
+	if len(vt.Spec.Cells) == 0 || !hasCellSpecificVtgate(vt) {
+		vtgateResult, err := r.reconcileVtgate(ctx, vt)
+		resultBuilder.Merge(vtgateResult, err)
+	} else {
+		// If using cell-specific VTGates, ensure cluster-level VTGate service is removed
+		if err := r.cleanupClusterVtgateService(ctx, vt); err != nil {
+			resultBuilder.Error(err)
+		}
+	}
 
 	// Create/update vttablet service.
 	vttabletResult, err := r.reconcileVttablet(ctx, vt)
@@ -239,4 +248,37 @@ func (r *ReconcileVitessCluster) Reconcile(cctx context.Context, request reconci
 	result, err := resultBuilder.Result()
 	reconcileCount.WithLabelValues(vt.Name, metrics.Result(err)).Inc()
 	return result, err
+}
+
+// hasCellSpecificVtgate checks if any cells have VTGate configurations
+func hasCellSpecificVtgate(vt *planetscalev2.VitessCluster) bool {
+	for _, cell := range vt.Spec.Cells {
+		// Check if the cell has a Gateway spec.
+		// If replicas is explicitly set to 0, then this cell doesn't want a gateway.
+		// If replicas is nil or > 0, then this cell wants a gateway (defaults will apply).
+		if cell.Gateway.Replicas == nil || *cell.Gateway.Replicas > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// cleanupClusterVtgateService removes the cluster-level VTGate service when using cell-specific VTGates
+func (r *ReconcileVitessCluster) cleanupClusterVtgateService(ctx context.Context, vt *planetscalev2.VitessCluster) error {
+	key := client.ObjectKey{Namespace: vt.Namespace, Name: vtgate.ClusterServiceName(vt.Name)}
+
+	// Try to delete the cluster-level VTGate service
+	svc := &corev1.Service{}
+	err := r.client.Get(ctx, key, svc)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// Service doesn't exist, nothing to clean up
+			return nil
+		}
+		// Some other error occurred
+		return err
+	}
+
+	// Service exists, delete it
+	return r.client.Delete(ctx, svc)
 }
