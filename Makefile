@@ -1,9 +1,9 @@
 .PHONY: build release-build unit-test integration-test generate generate-and-diff generate-operator-yaml push-only push
 
-IMAGE_REGISTRY:=docker.io
+IMAGE_REGISTRY:=560285300220.dkr.ecr.us-east-1.amazonaws.com
 IMAGE_TAG:=latest
 
-IMAGE:=planetscale/vitess-operator
+IMAGE:=bisnow/vitess-operator
 
 IMAGE_NAME:=$(IMAGE_REGISTRY)/$(IMAGE)
 

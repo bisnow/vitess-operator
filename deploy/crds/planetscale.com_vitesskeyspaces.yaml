@@ -1755,6 +1755,8 @@ spec:
                         type: object
                       clusterIP:
                         type: string
+                      name:
+                        type: string
                     type: object
                   sidecarContainers:
                     x-kubernetes-preserve-unknown-fields: true

@@ -32,7 +32,13 @@ import (
 )
 
 func (r *ReconcileVitessCluster) reconcileVtgate(ctx context.Context, vt *planetscalev2.VitessCluster) (reconcile.Result, error) {
-	key := client.ObjectKey{Namespace: vt.Namespace, Name: vtgate.ClusterServiceName(vt.Name)}
+	// Use custom name if specified, otherwise use auto-generated name
+	serviceName := vtgate.ClusterServiceName(vt.Name)
+	if vt.Spec.GatewayService != nil && vt.Spec.GatewayService.Name != "" {
+		serviceName = vt.Spec.GatewayService.Name
+	}
+
+	key := client.ObjectKey{Namespace: vt.Namespace, Name: serviceName}
 	labels := map[string]string{
 		planetscalev2.ClusterLabel:   vt.Name,
 		planetscalev2.ComponentLabel: planetscalev2.VtgateComponentName,

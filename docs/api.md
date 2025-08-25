@@ -115,10 +115,9 @@ string
 </em>
 </td>
 <td>
-<p>Zone is the name of the Availability Zone that this lockserver should run in.
-This value should match the value of the &ldquo;topology.kubernetes.io/zone&rdquo;
-label on the Kubernetes Nodes in that AZ.
-If the Kubernetes Nodes don&rsquo;t have such a label, leave this empty.</p>
+<p>Zone is the availability zone where this etcd cluster should be deployed.
+This value should match the value of the &ldquo;failure-domain.beta.kubernetes.io/zone&rdquo;
+label on Kubernetes Nodes.</p>
 </td>
 </tr>
 </table>
@@ -836,10 +835,9 @@ string
 </em>
 </td>
 <td>
-<p>Zone is the name of the Availability Zone that this lockserver should run in.
-This value should match the value of the &ldquo;topology.kubernetes.io/zone&rdquo;
-label on the Kubernetes Nodes in that AZ.
-If the Kubernetes Nodes don&rsquo;t have such a label, leave this empty.</p>
+<p>Zone is the availability zone where this etcd cluster should be deployed.
+This value should match the value of the &ldquo;failure-domain.beta.kubernetes.io/zone&rdquo;
+label on Kubernetes Nodes.</p>
 </td>
 </tr>
 </tbody>
@@ -2058,6 +2056,18 @@ within that Volume.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>
+<code>name</code><br>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Name can optionally be used to override the Service&rsquo;s name.
+If not specified, the operator will generate an auto-generated name.</p>
+</td>
+</tr>
 <tr>
 <td>
 <code>annotations</code><br>
@@ -4084,10 +4094,9 @@ string
 </em>
 </td>
 <td>
-<p>Zone is the name of the Availability Zone that this Vitess Cell should run in.
-This value should match the value of the &ldquo;topology.kubernetes.io/zone&rdquo;
-label on the Kubernetes Nodes in that AZ.
-If the Kubernetes Nodes don&rsquo;t have such a label, leave this empty.</p>
+<p>Zone is the availability zone where this cell should be deployed.
+This value should match the value of the &ldquo;failure-domain.beta.kubernetes.io/zone&rdquo;
+label on Kubernetes Nodes.</p>
 </td>
 </tr>
 <tr>

@@ -48,6 +48,8 @@ spec:
                     type: object
                   clusterIP:
                     type: string
+                  name:
+                    type: string
                 type: object
               createClientService:
                 type: boolean
@@ -268,6 +270,8 @@ spec:
                       type: string
                     type: object
                   clusterIP:
+                    type: string
+                  name:
                     type: string
                 type: object
               resources:

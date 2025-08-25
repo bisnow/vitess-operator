@@ -564,6 +564,10 @@ type VtAdminSpec struct {
 
 // ServiceOverrides allows customization of an arbitrary Service object.
 type ServiceOverrides struct {
+	// Name can optionally be used to override the Service's name.
+	// If not specified, the operator will generate an auto-generated name.
+	Name string `json:"name,omitempty"`
+
 	// Annotations specifies extra annotations to add to the Service object.
 	// Annotations added in this way will NOT be automatically removed from the
 	// Service object if they are removed here.
