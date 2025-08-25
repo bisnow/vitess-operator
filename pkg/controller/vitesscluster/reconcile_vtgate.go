@@ -44,13 +44,13 @@ func (r *ReconcileVitessCluster) reconcileVtgate(ctx context.Context, vt *planet
 		Kind: &corev1.Service{},
 
 		New: func(key client.ObjectKey) runtime.Object {
-			svc := vtgate.NewClusterService(key, labels)
+			svc := vtgate.NewService(key, labels)
 			update.ServiceOverrides(svc, vt.Spec.GatewayService)
 			return svc
 		},
 		UpdateInPlace: func(key client.ObjectKey, obj runtime.Object) {
 			svc := obj.(*corev1.Service)
-			vtgate.UpdateClusterService(svc, labels)
+			vtgate.UpdateService(svc, labels)
 			update.InPlaceServiceOverrides(svc, vt.Spec.GatewayService)
 		},
 		Status: func(key client.ObjectKey, obj runtime.Object) {
