@@ -45,12 +45,23 @@ func (r *ReconcileVitessCluster) reconcileVtgate(ctx context.Context, vt *planet
 
 		New: func(key client.ObjectKey) runtime.Object {
 			svc := vtgate.NewService(key, labels)
+			// For cluster-level service, we want to select ALL vtgate pods across all cells
+			// by using only the cluster and component labels, excluding the cell label
+			svc.Spec.Selector = map[string]string{
+				planetscalev2.ClusterLabel:   vt.Name,
+				planetscalev2.ComponentLabel: planetscalev2.VtgateComponentName,
+			}
 			update.ServiceOverrides(svc, vt.Spec.GatewayService)
 			return svc
 		},
 		UpdateInPlace: func(key client.ObjectKey, obj runtime.Object) {
 			svc := obj.(*corev1.Service)
 			vtgate.UpdateService(svc, labels)
+			// Ensure the selector is set correctly for cluster-level service
+			svc.Spec.Selector = map[string]string{
+				planetscalev2.ClusterLabel:   vt.Name,
+				planetscalev2.ComponentLabel: planetscalev2.VtgateComponentName,
+			}
 			update.InPlaceServiceOverrides(svc, vt.Spec.GatewayService)
 		},
 		Status: func(key client.ObjectKey, obj runtime.Object) {
