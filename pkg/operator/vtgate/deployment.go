@@ -209,7 +209,41 @@ func UpdateDeployment(obj *appsv1.Deployment, spec *Spec, mysqldImage string) {
 			},
 		}
 	} else {
-		obj.Spec.Template.Spec.Affinity = nil
+		// Set default preferred affinity rules for topology-aware scheduling
+		obj.Spec.Template.Spec.Affinity = &corev1.Affinity{
+			NodeAffinity: &corev1.NodeAffinity{
+				PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{
+					{
+						Weight: 100,
+						Preference: corev1.NodeSelectorTerm{
+							MatchExpressions: []corev1.NodeSelectorRequirement{
+								{
+									Key:      k8s.HostnameLabel,
+									Operator: corev1.NodeSelectorOpIn,
+									Values:   []string{},
+								},
+							},
+						},
+					},
+				},
+			},
+			PodAffinity: &corev1.PodAffinity{
+				PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+					{
+						Weight: 100,
+						PodAffinityTerm: corev1.PodAffinityTerm{
+							TopologyKey: k8s.ZoneFailureDomainLabel,
+							LabelSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{
+									planetscalev2.ClusterLabel:   spec.Labels[planetscalev2.ClusterLabel],
+									planetscalev2.ComponentLabel: planetscalev2.VtgateComponentName,
+								},
+							},
+						},
+					},
+				},
+			},
+		}
 	}
 
 	env := []corev1.EnvVar{}

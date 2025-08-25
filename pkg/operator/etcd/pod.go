@@ -244,7 +244,11 @@ func UpdatePod(obj *corev1.Pod, spec *Spec) {
 	// In both the case of the user injecting their own affinity and the default, we
 	// simply override the pod's existing affinity configuration.
 	if spec.Affinity != nil {
-		obj.Spec.Affinity = spec.Affinity
+		// Start with user's explicit affinity
+		obj.Spec.Affinity = spec.Affinity.DeepCopy()
+
+		// Then merge with default preferred rules for topology-aware spreading
+		mergeDefaultEtcdAffinity(obj.Spec.Affinity, spec)
 	} else {
 		if obj.Spec.Affinity == nil {
 			obj.Spec.Affinity = &corev1.Affinity{}
@@ -449,4 +453,43 @@ func (spec *Spec) Args() []string {
 	}
 
 	return flags.FormatArgs()
+}
+
+// mergeDefaultEtcdAffinity merges user-specified affinity with default preferred rules
+// for topology-aware spreading. This ensures that even when users specify explicit
+// affinity rules, they still get the benefits of the v2.15.1 default spreading behavior.
+func mergeDefaultEtcdAffinity(affinity *corev1.Affinity, spec *Spec) {
+	// Ensure PodAntiAffinity exists
+	if affinity.PodAntiAffinity == nil {
+		affinity.PodAntiAffinity = &corev1.PodAntiAffinity{}
+	}
+
+	// Add default preferred rules for node spreading (higher weight)
+	paa := &affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution
+	*paa = append(*paa, corev1.WeightedPodAffinityTerm{
+		Weight: 2,
+		PodAffinityTerm: corev1.PodAffinityTerm{
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					LockserverLabel: spec.LockserverName,
+				},
+			},
+			TopologyKey: k8s.HostnameLabel,
+		},
+	})
+
+	// Add zone spreading if not limited to a specific zone
+	if spec.Zone == "" {
+		*paa = append(*paa, corev1.WeightedPodAffinityTerm{
+			Weight: 1,
+			PodAffinityTerm: corev1.PodAffinityTerm{
+				LabelSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						LockserverLabel: spec.LockserverName,
+					},
+				},
+				TopologyKey: k8s.ZoneFailureDomainLabel,
+			},
+		})
+	}
 }
