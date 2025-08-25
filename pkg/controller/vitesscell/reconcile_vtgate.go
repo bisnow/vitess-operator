@@ -126,14 +126,23 @@ func (r *ReconcileVitessCell) reconcileVtgate(ctx context.Context, vtc *planetsc
 	update.StringMap(&extraFlags, vtc.Spec.Gateway.ExtraFlags)
 
 	// Get the affinity for this cell
-	// Gateway-specific affinity takes precedence over cell-level affinity
+	// Always start with merged cluster affinity, then merge with gateway affinity
 	var affinity *corev1.Affinity
+
+	// Start with merged cluster affinity (top-level + cell-level)
+	if vtc.Spec.Affinity != nil {
+		affinity = vtc.Spec.Affinity.DeepCopy()
+	}
+
+	// If gateway affinity exists, merge it with the cluster affinity
 	if vtc.Spec.Gateway.Affinity != nil {
-		// Use gateway-specific affinity (highest priority)
-		affinity = vtc.Spec.Gateway.Affinity
-	} else if vtc.Spec.Affinity != nil {
-		// Fall back to cell-level affinity (merged from top-level + cell-level)
-		affinity = vtc.Spec.Affinity
+		if affinity == nil {
+			// No cluster affinity, just use gateway affinity
+			affinity = vtc.Spec.Gateway.Affinity.DeepCopy()
+		} else {
+			// Merge gateway affinity with cluster affinity
+			affinity = mergeGatewayAffinity(affinity, vtc.Spec.Gateway.Affinity)
+		}
 	}
 
 	// Reconcile vtgate Deployment.
@@ -223,4 +232,62 @@ func (r *ReconcileVitessCell) reconcileVtgate(ctx context.Context, vtc *planetsc
 	}
 
 	return resultBuilder.Result()
+}
+
+// mergeGatewayAffinity merges gateway affinity with cluster affinity
+// Gateway affinity takes precedence for overlapping fields
+func mergeGatewayAffinity(clusterAffinity, gatewayAffinity *corev1.Affinity) *corev1.Affinity {
+	if clusterAffinity == nil {
+		return gatewayAffinity.DeepCopy()
+	}
+	if gatewayAffinity == nil {
+		return clusterAffinity.DeepCopy()
+	}
+
+	merged := clusterAffinity.DeepCopy()
+
+	// Merge NodeAffinity
+	if gatewayAffinity.NodeAffinity != nil {
+		if merged.NodeAffinity == nil {
+			merged.NodeAffinity = &corev1.NodeAffinity{}
+		}
+
+		// Merge RequiredDuringSchedulingIgnoredDuringExecution
+		if gatewayAffinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
+			if merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+				merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &corev1.NodeSelector{}
+			}
+
+			// Ensure we have at least one term to merge into
+			if len(merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms) == 0 {
+				merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = []corev1.NodeSelectorTerm{
+					{MatchExpressions: []corev1.NodeSelectorRequirement{}},
+				}
+			}
+
+			// Merge gateway expressions into the first term
+			for _, gatewayTerm := range gatewayAffinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
+				for _, gatewayExpr := range gatewayTerm.MatchExpressions {
+					// Check if we already have this key in the first term
+					keyExists := false
+					for _, existingExpr := range merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions {
+						if existingExpr.Key == gatewayExpr.Key {
+							keyExists = true
+							break
+						}
+					}
+
+					// Add gateway expression if key doesn't exist
+					if !keyExists {
+						merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions = append(
+							merged.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms[0].MatchExpressions,
+							gatewayExpr,
+						)
+					}
+				}
+			}
+		}
+	}
+
+	return merged
 }
