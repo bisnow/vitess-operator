@@ -120,10 +120,14 @@ func newVitessCell(key client.ObjectKey, vt *planetscalev2.VitessCluster, parent
 	}
 
 	// Get the merged affinity for this specific cell and override the template
+	// BUT preserve gateway-specific affinity if it exists
 	if affinityMap := vt.Spec.AffinityMap(); affinityMap != nil {
 		if cellAffinity, exists := affinityMap[cell.Name]; exists {
-			// Override the template affinity with the merged affinity from the cluster
-			template.Affinity = cellAffinity
+			// Only override template affinity if there's no gateway-specific affinity
+			// This allows gateway.affinity to take precedence over merged cluster affinity
+			if template.Gateway.Affinity == nil {
+				template.Affinity = cellAffinity
+			}
 		}
 	}
 

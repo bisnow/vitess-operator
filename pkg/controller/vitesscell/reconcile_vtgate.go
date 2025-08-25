@@ -125,15 +125,15 @@ func (r *ReconcileVitessCell) reconcileVtgate(ctx context.Context, vtc *planetsc
 	update.StringMap(&extraFlags, vtc.Spec.ExtraVitessFlags)
 	update.StringMap(&extraFlags, vtc.Spec.Gateway.ExtraFlags)
 
-	// Get the merged affinity for this cell
-	// The cell spec should already contain the merged affinity from top-level + cell-level
+	// Get the affinity for this cell
+	// Gateway-specific affinity takes precedence over cell-level affinity
 	var affinity *corev1.Affinity
-	if vtc.Spec.Affinity != nil {
-		// Use cell-level affinity (this should already be merged with top-level via AffinityMap)
-		affinity = vtc.Spec.Affinity
-	} else if vtc.Spec.Gateway.Affinity != nil {
-		// Fall back to gateway-specific affinity if no cell-level affinity
+	if vtc.Spec.Gateway.Affinity != nil {
+		// Use gateway-specific affinity (highest priority)
 		affinity = vtc.Spec.Gateway.Affinity
+	} else if vtc.Spec.Affinity != nil {
+		// Fall back to cell-level affinity (merged from top-level + cell-level)
+		affinity = vtc.Spec.Affinity
 	}
 
 	// Reconcile vtgate Deployment.
